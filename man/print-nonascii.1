@@ -1,0 +1,132 @@
+.TH "PRINT\-NONASCII" "1" "September 2017" "v0.0.1" ""
+.SH "NAME"
+\fBprint-nonascii\fR \- print lines with non\-ASCII characters
+.SH SYNOPSIS
+.P
+Prints lines that contain non\-ASCII characters\.
+.P
+.RS 2
+.nf
+print\-nonascii [\-\-<mode> [\-r]] [\-n] [\-b] [file \.\.\.]
+print\-nonascii \-q                        [file \.\.\.]
+
+\-\-<mode> prints abstract representations of non\-ASCII chars\.; one of:
+  \-\-caret, \-v \.\.\. use caret notation, as cat \-v would\.
+  \-\-bash \.\.\. represent non\-ASCII bytes as \\xhh 
+  \-\-psh \.\.\. (PowerShell) represent non\-ASCII Unicode characters as  
+            Unicode escape sequences: <backtick>u{h+}
+
+\-r, \-\-raw \.\.\. with \-\-<mode>, print each matching line as\-is too, first\.
+
+\-n, \-\-line\-number \.\.\. prefix the output lines with their line number from  
+ the original file, using format "<line\-number>:" \- decimal line numbers,  
+ no padding, no space before or after the ":"
+
+\-b, \-\-bare \.\.\. suppress per\-input\-filename headers
+
+\-q \.\.\. quiet mode: produce no output; signal presence of non\-ASCII chars\.  
+       with exit code 0; exit code 100 signals that there are none\.
+.fi
+.RE
+.P
+Standard options: \fB\-\-help\fP, \fB\-\-man\fP, \fB\-\-version\fP, \fB\-\-home\fP
+.SH DESCRIPTION
+.P
+Prints all input lines that contain at least one non\-ASCII character\.
+.br
+Input can come from one or more files, or via stdin\.
+.P
+With multiple input files, the results are prefixed by a header identifying
+.br
+the specific input file as follows; use \-b to suppress it:
+.P
+.RS 2
+.nf
+printf '\\1### %s\\n', FILENAME  # e\.g\., '\\1### test\.txt'
+.fi
+.RE
+.P
+Note the use of control character U+0001 (START OF HEADING) at the start of
+.br
+the line\. It will not print visibly, but can be used to more reliably filter
+.br
+out the header lines later, if desired\.
+.P
+Options include prepending the line number and using one of several abstract
+.br
+notations to represent the non\-ASCII caracters\.
+.P
+Note that mode \-\-psh only works properly with non\-ASCII characters that are
+.br
+UTF\-8\-encoded; any invalid\-as\-UTF\-8 bytes result in warnings, and the
+.br
+abstract representation will not be correct\.
+.P
+Note:
+.RS 0
+.IP \(bu 2
+Only works properly with TEXT (files) as input\.
+.IP \(bu 2
+Only \-\-caret and \-\-bash properly represent non\-ASCII bytes that stem from
+.br
+an extended ASCII encoding rather than UTF\-8\.
+.IP \(bu 2
+A UTF\-8 file with a \fIBOM\fR causes its first line to be printed, although
+.br
+the BOM characters don't print visibly; use any of the \-\-<mode> options
+.br
+to visualize them, e\.g\., with \-\-caret, the BOM prints as M\-oM\-;M\-?
+
+.RE
+.SH STANDARD OPTIONS
+.P
+All standard options must be provided as the only argument; all of them provide
+.br
+information only\.
+.RS 0
+.IP \(bu 2
+\fB\-h, \-\-help\fP
+.br
+Prints the contents of the synopsis chapter to stdout for quick reference\.
+.IP \(bu 2
+\fB\-\-man\fP
+.br
+Displays this manual page, which is a helpful alternative to using \fBman\fP,
+.br
+if the manual page isn't installed\.
+.IP \(bu 2
+\fB\-\-version\fP
+.br
+Prints version information\.
+.IP \(bu 2
+\fB\-\-home\fP
+.br
+Opens this utility's home page in the system's default web browser\.
+
+.RE
+.SH LICENSE
+.P
+Copyright (c) 2017 Michael Klement (mklement0@gmail\.com), released under
+.br
+the MIT license \fIhttps://spdx\.org/licenses/MIT\fR\|\.
+.SH EXAMPLES
+.P
+.RS 2
+.nf
+# Note: Byte sequence \\xe2\\x82\\xac is U+20AC, the EURO sign\.
+
+# Print lines with non\-ASCII chars\. with per\-byte Bash 
+# hex\. representations\.
+$ printf '1 \\xe2\\x82\\xac\\nall\-ASCII line\.' | print\-nonascii \-\-bash
+1 \\xe2\\x82\\xac
+
+# Print lines with non\-ASCII chars\. with PowerShell Unicode escapes\.
+$ printf '1 \\xe2\\x82\\xac\\nall\-ASCII line\.' | print\-nonascii \-\-psh
+1 `u{20ac}
+
+# Print lines with non\-ASCII chars\. in caret notation, with line numbers:
+$ printf '1 \\xe2\\x82\\xac\\nall\-ASCII line\.' | print\-nonascii \-v \-n
+1:1 M\-bM\-^BM\-,
+.fi
+.RE
+

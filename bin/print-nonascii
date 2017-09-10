@@ -1,0 +1,379 @@
+#!/usr/bin/env bash
+
+# --- STANDARD SCRIPT-GLOBAL CONSTANTS
+
+kTHIS_NAME=${BASH_SOURCE##*/}
+kTHIS_HOMEPAGE="https://github.com/mklement0/print-nonascii"
+kTHIS_VERSION='v0.0.1' # NOTE: This assignment is automatically updated by `make version VER=<newVer>` - DO keep the 'v' prefix.
+
+unset CDPATH  # To prevent unexpected `cd` behavior.
+
+# --- Begin: STANDARD HELPER FUNCTIONS
+
+die() { echo "$kTHIS_NAME: ERROR: ${1:-"ABORTING due to unexpected error."}" 1>&2; exit ${2:-1}; }
+dieSyntax() { echo "$kTHIS_NAME: ARGUMENT ERROR: ${1:-"Invalid argument(s) specified."}"$'\n'"Use -h for help." 1>&2; exit 2; }
+
+# SYNOPSIS
+#   openUrl <url>
+# DESCRIPTION
+#   Opens the specified URL in the system's default browser.
+openUrl() {
+  local url=$1 platform=$(uname) cmd=()
+  case $platform in
+    'Darwin') # OSX
+      cmd=( open "$url" )
+      ;;
+    'CYGWIN_'*) # Cygwin on Windows; must call cmd.exe with its `start` builtin
+      cmd=( cmd.exe /c start '' "$url " )  # !! Note the required trailing space.
+      ;;
+    'MINGW32_'*) # MSYS or Git Bash on Windows; they come with a Unix `start` binary
+      cmd=( start '' "$url" )
+      ;;
+    *) # Otherwise, assume a Freedesktop-compliant OS, which includes many Linux distros, PC-BSD, OpenSolaris, ...
+      cmd=( xdg-open "$url" )
+      ;; 
+  esac
+  "${cmd[@]}" || { echo "Cannot locate or failed to open default browser; please go to '$url' manually." >&2; return 1; }
+}
+
+# Prints the embedded Markdown-formatted man-page source to stdout.
+printManPageSource() {
+  sed -n -e $'/^: <<\'EOF_MAN_PAGE\'/,/^EOF_MAN_PAGE/ { s///; t\np;}' "$BASH_SOURCE"
+}
+
+# Opens the man page, if installed; otherwise, tries to display the embedded Markdown-formatted man-page source; if all else fails: tries to display the man page online.
+openManPage() {
+  local pager embeddedText 
+  if ! man 1 "$kTHIS_NAME" 2>/dev/null; then
+    # 2nd attempt: if present, display the embedded Markdown-formatted man-page source
+    embeddedText=$(printManPageSource)
+    if [[ -n $embeddedText ]]; then
+      pager='more'
+      command -v less &>/dev/null && pager='less' # see if the non-standard `less` is available, because it's preferable to the POSIX utility `more`
+      printf '%s\n' "$embeddedText" | "$pager"
+    else # 3rd attempt: open the the man page on the utility's website
+      openUrl "${kTHIS_HOMEPAGE}/doc/${kTHIS_NAME}.md"
+    fi
+  fi  
+}
+
+# Prints the contents of the synopsis chapter of the embedded Markdown-formatted man-page source for quick reference.
+printUsage() {
+  local embeddedText
+  # Extract usage information from the SYNOPSIS chapter of the embedded Markdown-formatted man-page source.
+  embeddedText=$(sed -n -e $'/^: <<\'EOF_MAN_PAGE\'/,/^EOF_MAN_PAGE/!d; /^## SYNOPSIS$/,/^#/{ s///; t\np; }' "$BASH_SOURCE")
+  if [[ -n $embeddedText ]]; then
+    # Print extracted synopsis chapter - remove backticks for uncluttered display.
+    printf '%s\n\n' "$embeddedText" | tr -d '`'
+  else # No SYNOPIS chapter found; fall back to displaying the man page.
+    echo "WARNING: usage information not found; opening man page instead." >&2
+    openManPage
+  fi
+}
+
+# --- End: STANDARD HELPER FUNCTIONS
+
+# ---  PROCESS STANDARD, OUTPUT-INFO-THEN-EXIT OPTIONS.
+case $1 in
+  --version)
+    # Output version number and exit, if requested.
+    echo "$kTHIS_NAME $kTHIS_VERSION"$'\nFor license information and more, visit '"$kTHIS_HOMEPAGE"; exit 0
+    ;;
+  -h|--help)
+    # Print usage information and exit.
+    printUsage; exit
+    ;;
+  --man)
+    # Display the manual page and exit, falling back to printing the embedded man-page source.
+    openManPage; exit
+    ;;
+  --man-source) # private option, used by `make update-man`
+    # Print raw, embedded Markdown-formatted man-page source and exit
+    printManPageSource; exit
+    ;;
+  --home)
+    # Open the home page and exit.
+    openUrl "$kTHIS_HOMEPAGE"; exit
+    ;;
+esac
+
+# --- MAIN BODY
+
+quiet=0 bare=0 includeLineNos=0 printRawToo=0 modeCaret=0 modePsh=0 modeBash=0
+# ----- BEGIN: OPTIONS PARSING: This is MOSTLY generic code, but:
+#  - SET allowOptsAfterOperands AFTER THIS COMMENT TO 1 to ALLOW OPTIONS TO BE MIXED WITH OPERANDS rather than requiring all options to come before the 1st operand, as POSIX mandates.
+#  - The SPECIFIC OPTIONS MUST BE HANDLED IN A CASE ... ESAC STATEMENT BELOW; look for "BEGIN: CUSTOMIZE HERE ... END: CUSTOMIZE HERE"
+#  - Assumes presence of function dieSyntax(); if not present, define as: dieSyntax() { echo "${BASH_SOURCE##*/}: ARGUMENT ERROR: ${1:-"Invalid argument(s) specified."} Use -h for help." >&2; exit 2; }
+#  - After the end of options parsing, $@ only contains the operands (non-option arguments), if any.
+allowOptsAfterOperands=1 operands=() i=0 optName= isLong=0 prefix= optArg= haveOptArgAttached=0 haveOptArgAsNextArg=0 acceptOptArg=0 needOptArg=0
+while (( $# )); do
+  if [[ $1 =~ ^(-)[a-zA-Z0-9]+.*$ || $1 =~ ^(--)[a-zA-Z0-9]+.*$ ]]; then # an option: either a short option / multiple short options in compressed form or a long option
+    prefix=${BASH_REMATCH[1]}; [[ $prefix == '--' ]] && isLong=1 || isLong=0
+    for (( i = 1; i < (isLong ? 2 : ${#1}); i++ )); do
+        acceptOptArg=0 needOptArg=0 haveOptArgAttached=0 haveOptArgAsNextArg=0 optArgAttached= optArgOpt= optArgReq=
+        if (( isLong )); then # long option: parse into name and, if present, argument
+          optName=${1:2}
+          [[ $optName =~ ^([^=]+)=(.*)$ ]] && { optName=${BASH_REMATCH[1]}; optArgAttached=${BASH_REMATCH[2]}; haveOptArgAttached=1; }
+        else # short option: *if* it takes an argument, the rest of the string, if any, is by definition the argument.
+          optName=${1:i:1}; optArgAttached=${1:i+1}; (( ${#optArgAttached} >= 1 )) && haveOptArgAttached=1
+        fi
+        (( haveOptArgAttached )) && optArgOpt=$optArgAttached optArgReq=$optArgAttached || { (( $# > 1 )) && { optArgReq=$2; haveOptArgAsNextArg=1; }; }
+        # ---- BEGIN: CUSTOMIZE HERE
+        case $optName in
+          q|quiet)
+            quiet=1
+            ;;
+          b|bare)
+            bare=1
+            ;;
+          v|caret)
+            modeCaret=1
+            ;;
+          psh)
+            modePsh=1
+            ;;
+          bash)
+            modeBash=1
+            ;;
+          r|raw)
+            printRawToo=1
+            ;;
+          n|includeLineNos)
+            includeLineNos=1
+            ;;
+          *)
+            dieSyntax "Unknown option: ${prefix}${optName}."
+            ;;
+        esac
+        # ---- END: CUSTOMIZE HERE
+        (( needOptArg )) && { (( ! haveOptArgAttached && ! haveOptArgAsNextArg )) && dieSyntax "Option ${prefix}${optName} is missing its argument." || (( haveOptArgAsNextArg )) && shift; }
+        (( acceptOptArg || needOptArg )) && break
+    done
+  else # an operand
+    if [[ $1 == '--' ]]; then
+      shift; operands+=( "$@" ); break
+    elif (( allowOptsAfterOperands )); then
+      operands+=( "$1" ) # continue 
+    else
+      operands=( "$@" )
+      break
+    fi
+  fi
+  shift
+done
+(( "${#operands[@]}" > 0 )) && set -- "${operands[@]}"; unset allowOptsAfterOperands operands i optName isLong prefix optArgAttached haveOptArgAttached haveOptArgAsNextArg acceptOptArg needOptArg
+# ----- END: OPTIONS PARSING: "$@" now contains all operands (non-option arguments).
+
+numModes=$(( modeCaret + modePsh + modeBash ))
+
+(( numModes > 1 || quiet && (bare || numModes || printRawToo) )) && dieSyntax "Incompatible options specified."
+
+# Process the remaining (non-option) arguments.
+shift $((OPTIND - 1)) # Skip the already-processed options.
+
+# Make sure that all input files are readable.
+if (( $# > 0 )); then
+  for f; do
+    [[ -r $f ]] || die "File not found or not readable: $f"
+  done
+fi
+
+ec=0
+
+if (( quiet )); then # quiet mode, just set exit code
+
+  # Use LC_ALL=C to process input byte by byte;
+  # [\x80-\xFF] matches all non-ASCII bytes (bytes with the high bit set).
+  LC_ALL=C awk '/[\x80-\xFF]/ { exit 2 }' "$@"
+  (( $? == 2 )) && ec=0 || ec=100
+
+else
+
+  printHeader=$(( $# > 1 ))
+
+  # Store the core Awk command in a variable for use in multiple places:
+  # Note: LC_ALL=C and the operands cannot be made part of the array.
+  awkCmd=(
+    awk 
+      -v printHeader=$printHeader
+      -v includeLineNos=$includeLineNos
+    'printHeader && FNR==1 { printf "\1### %s\n", FILENAME } 
+    /[\x80-\xFF]/ { if (includeLineNos) { printf "%d:", FNR }; print }'
+  )
+
+  # With multiple input files: print a header line before each file's output
+  # to identify the file at hand - unless -b was specified.
+  printHeader=0
+  (( ! bare && $# > 1 )) && printHeader=1
+
+  # Use LC_ALL=C to process input byte by byte;
+  # [\x80-\xFF] matches all non-ASCII bytes (bytes with the high bit set).
+  if (( modeCaret )); then
+    if (( printRawToo )); then
+      # !! This is inefficient, because a shell is spawned for every matching line.
+      LC_ALL=C "${awkCmd[@]}" "$@" | awk 'BEGIN { cmd="LC_ALL=C cat -v" } { print; print | cmd; close(cmd) }'
+    else
+      LC_ALL=C "${awkCmd[@]}" "$@" | LC_ALL=C cat -v
+    fi
+  elif (( modePsh )); then
+    # PowerShell mode:
+    #  Represent non-ASCII Unicode chars. as `u{h+} - e.g., `u{20ac} for '€'
+    #  Note: With non-UTF-8 input (any invalid-in-UTF-8 byte sequence(, this will not work properly and generate warnings.
+    LC_ALL=C "${awkCmd[@]}" "$@" | perl -C -nlse 'print if $printRawToo; print map { ord > 127 ? "`u{" . (sprintf "%x", ord) . "}" : $_ } split //' -- -printRawToo=$printRawToo
+  elif (( modeBash )); then
+    # Bash mode:
+    #   Generate *byte*-individual representations.
+    #   Note: Even though Bash v4+ has Unicode escapes - \unnnn (up to 4 hex digits) and \Unnnnnnnn (up to 8 hex. digits) - we escape the bytes
+    #         individually as \xhh, because that ensures that we can also represent invalid-in-UTF-8 characters (bytes).
+    LC_ALL=C "${awkCmd[@]}" "$@" | LC_ALL=C perl -nlse 'print if $printRawToo; print map { ord > 127 ? "\\x" . (sprintf "%x", ord) : $_ } split //' -- -printRawToo=$printRawToo
+  else 
+    # Raw mode:
+    #   Print lines as-is (--raw is implied)
+    LC_ALL=C "${awkCmd[@]}" "$@"
+  fi
+
+fi
+
+exit $ec
+
+####
+# MAN PAGE MARKDOWN SOURCE
+#  - Place a Markdown-formatted version of the man page for this script
+#    inside the here-document below.
+#    The document must be formatted to look good in all 3 viewing scenarios:
+#     - as a man page, after conversion to ROFF with marked-man
+#     - as plain text (raw Markdown source)
+#     - as HTML (rendered Markdown)
+#  Markdown formatting tips:
+#   - GENERAL
+#     To support plain-text rendering in the terminal, limit all lines to 80 chars.,
+#     and, for similar rendering as HTML, *end every line with 2 trailing spaces*.
+#   - HEADINGS
+#     - For better plain-text rendering, leave an empty line after a heading
+#       marked-man will remove it from the ROFF version.
+#     - The first heading must be a level-1 heading containing the utility
+#       name and very brief description; append the manual-section number 
+#       directly to the CLI name; e.g.:
+#         # foo(1) - does bar
+#     - The 2nd, level-2 heading must be '## SYNOPSIS' and the chapter's body
+#       must render reasonably as plain text, because it is printed to stdout
+#       when  `-h`, `--help` is specified:
+#         Use 4-space indentation without markup for both the syntax line and the
+#         block of brief option descriptions; represent option-arguments and operands
+#         in angle brackets; e.g., '<foo>'
+#     - All other headings should be level-2 headings in ALL-CAPS.
+#   - TEXT
+#      - Use NO indentation for regular chapter text; if you do, it will 
+#        be indented further than list items.
+#      - Use 4-space indentation, as usual, for code blocks.
+#      - Markup character-styling markup translates to ROFF rendering as follows:
+#         `...` and **...** render as bolded (red) text
+#         _..._ and *...* render as word-individually underlined text
+#   - LISTS
+#      - Indent list items by 2 spaces for better plain-text viewing, but note
+#        that the ROFF generated by marked-man still renders them unindented.
+#      - End every list item (bullet point) itself with 2 trailing spaces too so
+#        that it renders on its own line.
+#      - Avoid associating more than 1 paragraph with a list item, if possible,
+#        because it requires the following trick, which hampers plain-text readability:
+#        Use '&nbsp;<space><space>' in lieu of an empty line.
+####
+: <<'EOF_MAN_PAGE'
+# print-nonascii(1) - print lines with non-ASCII characters
+
+## SYNOPSIS
+
+Prints lines that contain non-ASCII characters.
+
+    print-nonascii [--<mode> [-r]] [-n] [-b] [file ...]
+    print-nonascii -q                        [file ...]
+
+    --<mode> prints abstract representations of non-ASCII chars.; one of:
+      --caret, -v ... use caret notation, as cat -v would.
+      --bash ... represent non-ASCII bytes as \xhh 
+      --psh ... (PowerShell) represent non-ASCII Unicode characters as  
+                Unicode escape sequences: <backtick>u{h+}
+    
+    -r, --raw ... with --<mode>, print each matching line as-is too, first.
+
+    -n, --line-number ... prefix the output lines with their line number from  
+     the original file, using format "<line-number>:" - decimal line numbers,  
+     no padding, no space before or after the ":"
+
+    -b, --bare ... suppress per-input-filename headers
+
+    -q ... quiet mode: produce no output; signal presence of non-ASCII chars.  
+           with exit code 0; exit code 100 signals that there are none.
+
+Standard options: `--help`, `--man`, `--version`, `--home`
+
+## DESCRIPTION
+
+Prints all input lines that contain at least one non-ASCII character.  
+Input can come from one or more files, or via stdin.
+
+With multiple input files, the results are prefixed by a header identifying  
+the specific input file as follows; use -b to suppress it:
+
+    printf '\1### %s\n', FILENAME  # e.g., '\1### test.txt'
+
+Note the use of control character U+0001 (START OF HEADING) at the start of  
+the line. It will not print visibly, but can be used to more reliably filter  
+out the header lines later, if desired.
+
+Options include prepending the line number and using one of several abstract  
+notations to represent the non-ASCII caracters.
+
+Note that mode --psh only works properly with non-ASCII characters that are  
+UTF-8-encoded; any invalid-as-UTF-8 bytes result in warnings, and the  
+abstract representation will not be correct.
+
+Note:
+  * Only works properly with TEXT (files) as input.
+  * Only --caret and --bash properly represent non-ASCII bytes that stem from  
+    an extended ASCII encoding rather than UTF-8.
+  * A UTF-8 file with a *BOM* causes its first line to be printed, although  
+    the BOM characters don't print visibly; use any of the --<mode> options  
+    to visualize them, e.g., with --caret, the BOM prints as M-oM-;M-?
+
+## STANDARD OPTIONS
+
+All standard options must be provided as the only argument; all of them provide  
+information only.
+
+ * `-h, --help`  
+   Prints the contents of the synopsis chapter to stdout for quick reference.
+
+ * `--man`  
+   Displays this manual page, which is a helpful alternative to using `man`,  
+   if the manual page isn't installed.
+
+ * `--version`  
+   Prints version information.
+  
+ * `--home`  
+   Opens this utility's home page in the system's default web browser.
+
+## LICENSE
+
+Copyright (c) 2017 Michael Klement (mklement0@gmail.com), released under  
+the [MIT license](https://spdx.org/licenses/MIT).
+
+## EXAMPLES
+
+    # Note: Byte sequence \xe2\x82\xac is U+20AC, the EURO sign.
+
+    # Print lines with non-ASCII chars. with per-byte Bash 
+    # hex. representations.
+    $ printf '1 \xe2\x82\xac\nall-ASCII line.' | print-nonascii --bash
+    1 \xe2\x82\xac
+
+    # Print lines with non-ASCII chars. with PowerShell Unicode escapes.
+    $ printf '1 \xe2\x82\xac\nall-ASCII line.' | print-nonascii --psh
+    1 `u{20ac}
+
+    # Print lines with non-ASCII chars. in caret notation, with line numbers:
+    $ printf '1 \xe2\x82\xac\nall-ASCII line.' | print-nonascii -v -n
+    1:1 M-bM-^BM-,
+
+EOF_MAN_PAGE

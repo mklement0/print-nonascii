@@ -1,0 +1,51 @@
+{
+  "name": "print-nonascii",
+  "description": "UNIX CLI that prints lines that contain non-ASCII characters.",
+  "private": false,
+  "version": "0.0.1",
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "preferGlobal": true,
+  "bin": {
+    "print-nonascii": "bin/print-nonascii"
+  },
+  "man": "./man/print-nonascii.1",
+  "homepage": "https://github.com/mklement0/print-nonascii",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mklement0/print-nonascii.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mklement0/print-nonascii/issues"
+  },
+  "scripts": {
+    "test": "make test"
+  },
+  "keywords": [
+    "print",
+    "non-ASCII",
+    "ASCII",
+    "Unicode",
+    "character",
+    "encoding"
+  ],
+  "author": "Michael Klement <mklement0@gmail.com> (http://same2u.net)",
+  "license": "MIT",
+  "net_same2u": {
+    "make_pkg": {
+      "tocOn": true,
+      "tocTitle": "**Contents**",
+      "manOn": true
+    }
+  },
+  "devDependencies": {
+    "doctoc": "^0.13.0",
+    "json": "^9.0.3",
+    "marked-man": "^0.1.5",
+    "replace": "^0.3.0",
+    "semver": "^4.2.0",
+    "urchin": "^0.0.5"
+  }
+}
