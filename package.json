@@ -2,7 +2,7 @@
   "name": "print-nonascii",
   "description": "UNIX CLI that prints lines that contain non-ASCII characters.",
   "private": false,
-  "version": "0.0.2",
+  "version": "0.0.3",
   "os": [
     "darwin",
     "linux"

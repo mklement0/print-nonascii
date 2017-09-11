@@ -4,7 +4,7 @@
 
 kTHIS_NAME=${BASH_SOURCE##*/}
 kTHIS_HOMEPAGE="https://github.com/mklement0/print-nonascii"
-kTHIS_VERSION='v0.0.2' # NOTE: This assignment is automatically updated by `make version VER=<newVer>` - DO keep the 'v' prefix.
+kTHIS_VERSION='v0.0.3' # NOTE: This assignment is automatically updated by `make version VER=<newVer>` - DO keep the 'v' prefix.
 
 unset CDPATH  # To prevent unexpected `cd` behavior.
 
@@ -195,45 +195,51 @@ else
 
   # If no files were specified, read from stdin.
   (( $# == 0 )) && set -- /dev/stdin
-
+  
   # Store the core Awk command in a variable for use in multiple places:
   # Note: LC_ALL=C and the operands cannot be made part of the array.
   # [\x80-\xFF] matches all non-ASCII bytes (bytes with the high bit set).
   awkCmd=(
     awk 
       -v includeLineNos=$includeLineNos
-      '/[\x80-\xFF]/ { if (includeLineNos) { printf "%d:", FNR }; print }'
+      '/[\x80-\xFF]/ {
+        if (includeLineNos) { printf "%d:", FNR }
+        print
+      }'
   )
-  
+
   # Loop over all input files
   for file; do
 
-    (( printHeader )) && printf "\1###\t%s\n" "$file"
+    header=
+    (( printHeader )) && header=$(printf "\1###\t%s\n" "$file")
 
-    # Use LC_ALL=C to process input byte by byte.
-    if (( modeCaret )); then
-      if (( printRawToo )); then
-        # !! This is inefficient, because a shell is spawned for every matching line.
-        LC_ALL=C "${awkCmd[@]}" "$file" | awk 'BEGIN { cmd="LC_ALL=C cat -v" } { print; print | cmd; close(cmd) }'
-      else
-        LC_ALL=C "${awkCmd[@]}" "$file" | LC_ALL=C cat -v
+    {
+      # Use LC_ALL=C to process input byte by byte.
+      if (( modeCaret )); then
+        if (( printRawToo )); then
+          # !! This is inefficient, because a shell is spawned for every matching line.
+          LC_ALL=C "${awkCmd[@]}" "$file" | awk 'BEGIN { cmd="LC_ALL=C cat -v" } { print; print | cmd; close(cmd) }'
+        else
+          LC_ALL=C "${awkCmd[@]}" "$file" | LC_ALL=C cat -v
+        fi
+      elif (( modePsh )); then
+        # PowerShell mode:
+        #  Represent non-ASCII Unicode chars. as `u{h...} - e.g., `u{20ac} for '€'
+        #  Note: With non-UTF-8 input (any invalid-in-UTF-8 byte sequence(, this will not work properly and generate warnings.
+        LC_ALL=C "${awkCmd[@]}" "$file" | perl -C -nlse 'print if $printRawToo; print map { ord > 127 ? "`u{" . (sprintf "%x", ord) . "}" : $_ } split //' -- -printRawToo=$printRawToo
+      elif (( modeBash )); then
+        # Bash mode:
+        #   Generate *byte*-individual representations.
+        #   Note: Even though Bash v4+ has Unicode escapes, we escape the bytes
+        #         individually as \xhh, because that ensures that we can also represent invalid-in-UTF-8 characters (bytes).
+        LC_ALL=C "${awkCmd[@]}" "$file" | LC_ALL=C perl -nlse 'print if $printRawToo; print map { ord > 127 ? "\\x" . (sprintf "%x", ord) : $_ } split //' -- -printRawToo=$printRawToo
+      else 
+        # Raw mode:
+        #   Print lines as-is (--raw is implied)
+        LC_ALL=C "${awkCmd[@]}" "$file"
       fi
-    elif (( modePsh )); then
-      # PowerShell mode:
-      #  Represent non-ASCII Unicode chars. as `u{h...} - e.g., `u{20ac} for '€'
-      #  Note: With non-UTF-8 input (any invalid-in-UTF-8 byte sequence(, this will not work properly and generate warnings.
-      LC_ALL=C "${awkCmd[@]}" "$file" | perl -C -nlse 'print if $printRawToo; print map { ord > 127 ? "`u{" . (sprintf "%x", ord) . "}" : $_ } split //' -- -printRawToo=$printRawToo
-    elif (( modeBash )); then
-      # Bash mode:
-      #   Generate *byte*-individual representations.
-      #   Note: Even though Bash v4+ has Unicode escapes, we escape the bytes
-      #         individually as \xhh, because that ensures that we can also represent invalid-in-UTF-8 characters (bytes).
-      LC_ALL=C "${awkCmd[@]}" "$file" | LC_ALL=C perl -nlse 'print if $printRawToo; print map { ord > 127 ? "\\x" . (sprintf "%x", ord) : $_ } split //' -- -printRawToo=$printRawToo
-    else 
-      # Raw mode:
-      #   Print lines as-is (--raw is implied)
-      LC_ALL=C "${awkCmd[@]}" "$file"
-    fi
+    } | awk -v header="$header" '{ if (!nonFirst++ && header) print header; print }'
 
   done
 
