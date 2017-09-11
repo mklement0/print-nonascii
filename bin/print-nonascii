@@ -4,7 +4,7 @@
 
 kTHIS_NAME=${BASH_SOURCE##*/}
 kTHIS_HOMEPAGE="https://github.com/mklement0/print-nonascii"
-kTHIS_VERSION='v0.0.1' # NOTE: This assignment is automatically updated by `make version VER=<newVer>` - DO keep the 'v' prefix.
+kTHIS_VERSION='v0.0.2' # NOTE: This assignment is automatically updated by `make version VER=<newVer>` - DO keep the 'v' prefix.
 
 unset CDPATH  # To prevent unexpected `cd` behavior.
 
@@ -189,48 +189,53 @@ if (( quiet )); then # quiet mode, just set exit code
 
 else
 
-  printHeader=$(( $# > 1 ))
+  # With multiple input files: print a header line before each file's output
+  # to identify the file at hand - unless -b was specified.
+  printHeader=$(( !bare && $# > 1 ))
+
+  # If no files were specified, read from stdin.
+  (( $# == 0 )) && set -- /dev/stdin
 
   # Store the core Awk command in a variable for use in multiple places:
   # Note: LC_ALL=C and the operands cannot be made part of the array.
+  # [\x80-\xFF] matches all non-ASCII bytes (bytes with the high bit set).
   awkCmd=(
     awk 
-      -v printHeader=$printHeader
       -v includeLineNos=$includeLineNos
-    'printHeader && FNR==1 { printf "\1### %s\n", FILENAME } 
-    /[\x80-\xFF]/ { if (includeLineNos) { printf "%d:", FNR }; print }'
+      '/[\x80-\xFF]/ { if (includeLineNos) { printf "%d:", FNR }; print }'
   )
+  
+  # Loop over all input files
+  for file; do
 
-  # With multiple input files: print a header line before each file's output
-  # to identify the file at hand - unless -b was specified.
-  printHeader=0
-  (( ! bare && $# > 1 )) && printHeader=1
+    (( printHeader )) && printf "\1###\t%s\n" "$file"
 
-  # Use LC_ALL=C to process input byte by byte;
-  # [\x80-\xFF] matches all non-ASCII bytes (bytes with the high bit set).
-  if (( modeCaret )); then
-    if (( printRawToo )); then
-      # !! This is inefficient, because a shell is spawned for every matching line.
-      LC_ALL=C "${awkCmd[@]}" "$@" | awk 'BEGIN { cmd="LC_ALL=C cat -v" } { print; print | cmd; close(cmd) }'
-    else
-      LC_ALL=C "${awkCmd[@]}" "$@" | LC_ALL=C cat -v
+    # Use LC_ALL=C to process input byte by byte.
+    if (( modeCaret )); then
+      if (( printRawToo )); then
+        # !! This is inefficient, because a shell is spawned for every matching line.
+        LC_ALL=C "${awkCmd[@]}" "$file" | awk 'BEGIN { cmd="LC_ALL=C cat -v" } { print; print | cmd; close(cmd) }'
+      else
+        LC_ALL=C "${awkCmd[@]}" "$file" | LC_ALL=C cat -v
+      fi
+    elif (( modePsh )); then
+      # PowerShell mode:
+      #  Represent non-ASCII Unicode chars. as `u{h...} - e.g., `u{20ac} for '€'
+      #  Note: With non-UTF-8 input (any invalid-in-UTF-8 byte sequence(, this will not work properly and generate warnings.
+      LC_ALL=C "${awkCmd[@]}" "$file" | perl -C -nlse 'print if $printRawToo; print map { ord > 127 ? "`u{" . (sprintf "%x", ord) . "}" : $_ } split //' -- -printRawToo=$printRawToo
+    elif (( modeBash )); then
+      # Bash mode:
+      #   Generate *byte*-individual representations.
+      #   Note: Even though Bash v4+ has Unicode escapes, we escape the bytes
+      #         individually as \xhh, because that ensures that we can also represent invalid-in-UTF-8 characters (bytes).
+      LC_ALL=C "${awkCmd[@]}" "$file" | LC_ALL=C perl -nlse 'print if $printRawToo; print map { ord > 127 ? "\\x" . (sprintf "%x", ord) : $_ } split //' -- -printRawToo=$printRawToo
+    else 
+      # Raw mode:
+      #   Print lines as-is (--raw is implied)
+      LC_ALL=C "${awkCmd[@]}" "$file"
     fi
-  elif (( modePsh )); then
-    # PowerShell mode:
-    #  Represent non-ASCII Unicode chars. as `u{h+} - e.g., `u{20ac} for '€'
-    #  Note: With non-UTF-8 input (any invalid-in-UTF-8 byte sequence(, this will not work properly and generate warnings.
-    LC_ALL=C "${awkCmd[@]}" "$@" | perl -C -nlse 'print if $printRawToo; print map { ord > 127 ? "`u{" . (sprintf "%x", ord) . "}" : $_ } split //' -- -printRawToo=$printRawToo
-  elif (( modeBash )); then
-    # Bash mode:
-    #   Generate *byte*-individual representations.
-    #   Note: Even though Bash v4+ has Unicode escapes - \unnnn (up to 4 hex digits) and \Unnnnnnnn (up to 8 hex. digits) - we escape the bytes
-    #         individually as \xhh, because that ensures that we can also represent invalid-in-UTF-8 characters (bytes).
-    LC_ALL=C "${awkCmd[@]}" "$@" | LC_ALL=C perl -nlse 'print if $printRawToo; print map { ord > 127 ? "\\x" . (sprintf "%x", ord) : $_ } split //' -- -printRawToo=$printRawToo
-  else 
-    # Raw mode:
-    #   Print lines as-is (--raw is implied)
-    LC_ALL=C "${awkCmd[@]}" "$@"
-  fi
+
+  done
 
 fi
 
@@ -292,7 +297,7 @@ Prints lines that contain non-ASCII characters.
       --caret, -v ... use caret notation, as cat -v would.
       --bash ... represent non-ASCII bytes as \xhh 
       --psh ... (PowerShell) represent non-ASCII Unicode characters as  
-                Unicode escape sequences: <backtick>u{h+}
+                Unicode escape sequences: <backtick>u{h...}
     
     -r, --raw ... with --<mode>, print each matching line as-is too, first.
 
@@ -315,7 +320,7 @@ Input can come from one or more files, or via stdin.
 With multiple input files, the results are prefixed by a header identifying  
 the specific input file as follows; use -b to suppress it:
 
-    printf '\1### %s\n', FILENAME  # e.g., '\1### test.txt'
+    printf '\1###\t%s\n', FILENAME  # e.g., '\1###        test.txt'
 
 Note the use of control character U+0001 (START OF HEADING) at the start of  
 the line. It will not print visibly, but can be used to more reliably filter  

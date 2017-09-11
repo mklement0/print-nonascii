@@ -1,4 +1,4 @@
-.TH "PRINT\-NONASCII" "1" "September 2017" "v0.0.1" ""
+.TH "PRINT\-NONASCII" "1" "September 2017" "v0.0.2" ""
 .SH "NAME"
 \fBprint-nonascii\fR \- print lines with non\-ASCII characters
 .SH SYNOPSIS
@@ -14,7 +14,7 @@ print\-nonascii \-q                        [file \.\.\.]
   \-\-caret, \-v \.\.\. use caret notation, as cat \-v would\.
   \-\-bash \.\.\. represent non\-ASCII bytes as \\xhh 
   \-\-psh \.\.\. (PowerShell) represent non\-ASCII Unicode characters as  
-            Unicode escape sequences: <backtick>u{h+}
+            Unicode escape sequences: <backtick>u{h\.\.\.}
 
 \-r, \-\-raw \.\.\. with \-\-<mode>, print each matching line as\-is too, first\.
 
@@ -42,7 +42,7 @@ the specific input file as follows; use \-b to suppress it:
 .P
 .RS 2
 .nf
-printf '\\1### %s\\n', FILENAME  # e\.g\., '\\1### test\.txt'
+printf '\\1###\\t%s\\n', FILENAME  # e\.g\., '\\1###        test\.txt'
 .fi
 .RE
 .P

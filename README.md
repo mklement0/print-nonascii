@@ -58,7 +58,8 @@ $ print-nonascii -n /tmp/test.txt
 2:twö
 
 # Print only lines that have non-ASCII characters, using PowerShell 
-# Unicode escape-sequence notation (--psh), preceded by the line as-is (--raw).
+# Unicode escape-sequence notation (--psh), preceded by the 
+# line as-is (--raw).
 # The Unicode code point of character "ö" is U+00F6:
 $ print-nonascii --psh --raw /tmp/test.txt
 twö
@@ -69,14 +70,16 @@ $ print-nonascii --bash --raw /tmp/test.txt
 twö
 tw\xc3\xb6
 
-# Simulate input from multiple files by specifying the same file twice, so as 
-# to show the headers identifying each input file (suppress with -b).
-# Note that each header line (invisibly) starts with control character U+0001, 
-# so as to allow more predictable identification of header lines in the output.
+# Simulate input from multiple files by specifying the same file
+# twice, so as to show the headers identifying each input file 
+# (suppress with -b).
+# Note that each header line (invisibly) starts with control 
+# character U+0001, so as to allow more predictable
+# identification of header lines in the output.
 $ print-nonascii -n /tmp/test.txt /tmp/test.txt 
-### /tmp/test.txt
+###	/tmp/test.txt
 2:twö
-### /tmp/test.txt
+###	/tmp/test.txt
 2:twö
 ```
 
@@ -125,7 +128,7 @@ Prints lines that contain non-ASCII characters.
       --caret, -v ... use caret notation, as cat -v would.
       --bash ... represent non-ASCII bytes as \xhh 
       --psh ... (PowerShell) represent non-ASCII Unicode characters as  
-                Unicode escape sequences: <backtick>u{h+}
+                Unicode escape sequences: <backtick>u{h...}
     
     -r, --raw ... with --<mode>, print each matching line as-is too, first.
 
@@ -171,6 +174,10 @@ This project gratefully depends on the following open-source components, accordi
 Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `make version` is called. Fill in changes afterward. -->
+
+* **[v0.0.2](https://github.com/mklement0/print-nonascii/compare/v0.0.1...v0.0.2)** (2017-09-10):
+  * [fix] Header line is no longer printed twice when `--<mode>` is combined with `--raw`.
+  * Header line now uses a tab char. to separate prefix `###` from the filename.
 
 * **v0.0.1** (2017-09-10):
   * Initial release.

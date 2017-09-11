@@ -13,7 +13,7 @@ Prints lines that contain non-ASCII characters.
       --caret, -v ... use caret notation, as cat -v would.
       --bash ... represent non-ASCII bytes as \xhh 
       --psh ... (PowerShell) represent non-ASCII Unicode characters as  
-                Unicode escape sequences: <backtick>u{h+}
+                Unicode escape sequences: <backtick>u{h...}
     
     -r, --raw ... with --<mode>, print each matching line as-is too, first.
 
@@ -36,7 +36,7 @@ Input can come from one or more files, or via stdin.
 With multiple input files, the results are prefixed by a header identifying  
 the specific input file as follows; use -b to suppress it:
 
-    printf '\1### %s\n', FILENAME  # e.g., '\1### test.txt'
+    printf '\1###\t%s\n', FILENAME  # e.g., '\1###        test.txt'
 
 Note the use of control character U+0001 (START OF HEADING) at the start of  
 the line. It will not print visibly, but can be used to more reliably filter  
