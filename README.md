@@ -165,7 +165,7 @@ This project gratefully depends on the following open-source components, accordi
 * [marked-man (D)](https://github.com/kapouer/marked-man#readme)
 * [replace (D)](https://github.com/harthur/replace#readme)
 * [semver (D)](https://github.com/npm/node-semver#readme)
-* [urchin (D)](https://github.com/tlevine/urchin#readme)
+* [urchin (D)](https://git.sdf.org/tlevine/urchin)
 
 <!-- DO NOT EDIT THE NEXT CHAPTER and RETAIN THIS COMMENT: The next chapter is updated by `make update-readme/release` with the contents of 'CHANGELOG.md'. ALSO, LEAVE AT LEAST 1 BLANK LINE AFTER THIS COMMENT. -->
 
